@@ -5,113 +5,24 @@ namespace App\Libraries;
 /**
  * RBACStore
  * 
- * A session-based mock database store for Users, Roles, and Permissions
- * to allow fully functional CRUD and access checks without DB installation.
+ * A relational database-backed store for Users, Roles, and Permissions
+ * providing robust access control.
  */
 class RBACStore
 {
-    protected $session;
+    protected $db;
 
     public function __construct()
     {
-        $this->session = session();
-        $this->init();
+        $this->db = \Config\Database::connect();
     }
 
     /**
-     * Initialise default seeds if they don't exist in session
+     * Stub init function to maintain backward compatibility
      */
     public function init()
     {
-        // 1. Initialise Permissions
-        if (!$this->session->has('rbac_permissions')) {
-            $defaultPermissions = [
-                [
-                    'name' => 'view_dashboard',
-                    'description' => 'Can access the main dashboard overview',
-                    'category' => 'Dashboard',
-                    'is_system' => true
-                ],
-                [
-                    'name' => 'manage_users',
-                    'description' => 'Can list, create, edit and delete users',
-                    'category' => 'User Management',
-                    'is_system' => true
-                ],
-                [
-                    'name' => 'manage_roles',
-                    'description' => 'Can list, create, edit and delete roles',
-                    'category' => 'Role Management',
-                    'is_system' => true
-                ],
-                [
-                    'name' => 'manage_permissions',
-                    'description' => 'Can list, create, edit and delete permission rules',
-                    'category' => 'Permission Management',
-                    'is_system' => true
-                ]
-            ];
-            $this->session->set('rbac_permissions', $defaultPermissions);
-        }
-
-        // 2. Initialise Roles
-        if (!$this->session->has('rbac_roles')) {
-            $defaultRoles = [
-                [
-                    'name' => 'Super Admin',
-                    'description' => 'Unrestricted access to all resources and settings.',
-                    'permissions' => ['view_dashboard', 'manage_users', 'manage_roles', 'manage_permissions'],
-                    'is_system' => true
-                ],
-                [
-                    'name' => 'Manager',
-                    'description' => 'Can view metrics and manage team users.',
-                    'permissions' => ['view_dashboard', 'manage_users'],
-                    'is_system' => true
-                ],
-                [
-                    'name' => 'User',
-                    'description' => 'Standard user account with read-only dashboard access.',
-                    'permissions' => ['view_dashboard'],
-                    'is_system' => true
-                ]
-            ];
-            $this->session->set('rbac_roles', $defaultRoles);
-        }
-
-        // 3. Initialise Users
-        if (!$this->session->has('rbac_users')) {
-            $defaultUsers = [
-                [
-                    'id' => 1,
-                    'name' => 'Alex Admin',
-                    'email' => 'admin@rbac.com',
-                    'password_hash' => password_hash('admin', PASSWORD_DEFAULT),
-                    'role' => 'Super Admin',
-                    'status' => 'Active',
-                    'created_at' => '2026-06-01 09:00:00'
-                ],
-                [
-                    'id' => 2,
-                    'name' => 'Morgan Manager',
-                    'email' => 'manager@rbac.com',
-                    'password_hash' => password_hash('manager', PASSWORD_DEFAULT),
-                    'role' => 'Manager',
-                    'status' => 'Active',
-                    'created_at' => '2026-06-05 10:30:00'
-                ],
-                [
-                    'id' => 3,
-                    'name' => 'Sam User',
-                    'email' => 'user@rbac.com',
-                    'password_hash' => password_hash('user', PASSWORD_DEFAULT),
-                    'role' => 'User',
-                    'status' => 'Active',
-                    'created_at' => '2026-06-10 14:15:00'
-                ]
-            ];
-            $this->session->set('rbac_users', $defaultUsers);
-        }
+        // No-op. Handled by database migrations and seeders.
     }
 
     // ==========================================
@@ -120,75 +31,55 @@ class RBACStore
 
     public function getPermissions()
     {
-        return $this->session->get('rbac_permissions') ?? [];
+        return $this->db->table('permissions')
+                        ->orderBy('category', 'ASC')
+                        ->orderBy('name', 'ASC')
+                        ->get()
+                        ->getResultArray();
     }
 
     public function getPermission($name)
     {
-        $perms = $this->getPermissions();
-        foreach ($perms as $perm) {
-            if ($perm['name'] === $name) {
-                return $perm;
-            }
-        }
-        return null;
+        return $this->db->table('permissions')
+                        ->where('name', $name)
+                        ->get()
+                        ->getRowArray();
     }
 
     public function savePermission($data)
     {
-        $perms = $this->getPermissions();
-        $exists = false;
-
-        foreach ($perms as $key => $perm) {
-            if ($perm['name'] === $data['name']) {
-                $perms[$key] = array_merge($perm, $data);
-                $exists = true;
-                break;
-            }
+        $existing = $this->getPermission($data['name']);
+        if ($existing) {
+            $updateData = [
+                'description' => $data['description'] ?? '',
+                'category'    => $data['category'] ?? 'General',
+                'updated_at'  => date('Y-m-d H:i:s')
+            ];
+            return $this->db->table('permissions')
+                            ->where('name', $data['name'])
+                            ->update($updateData);
+        } else {
+            $insertData = [
+                'name'        => $data['name'],
+                'description' => $data['description'] ?? '',
+                'category'    => $data['category'] ?? 'General',
+                'is_system'   => $data['is_system'] ?? 0,
+                'created_at'  => date('Y-m-d H:i:s'),
+                'updated_at'  => date('Y-m-d H:i:s')
+            ];
+            return $this->db->table('permissions')->insert($insertData);
         }
-
-        if (!$exists) {
-            $data['is_system'] = $data['is_system'] ?? false;
-            $perms[] = $data;
-        }
-
-        $this->session->set('rbac_permissions', $perms);
-        return true;
     }
 
     public function deletePermission($name)
     {
-        $perms = $this->getPermissions();
-        foreach ($perms as $key => $perm) {
-            if ($perm['name'] === $name) {
-                if (!empty($perm['is_system'])) {
-                    return false; // Prevent system rules deletion
-                }
-                unset($perms[$key]);
-                $this->session->set('rbac_permissions', array_values($perms));
-
-                // Also remove this permission from any roles
-                $this->removePermissionFromRoles($name);
-                return true;
-            }
+        $perm = $this->getPermission($name);
+        if (!$perm || !empty($perm['is_system'])) {
+            return false; // Prevent system rules deletion
         }
-        return false;
-    }
-
-    protected function removePermissionFromRoles($permName)
-    {
-        $roles = $this->getRoles();
-        $updated = false;
-        foreach ($roles as $key => $role) {
-            if (($idx = array_search($permName, $role['permissions'])) !== false) {
-                unset($roles[$key]['permissions'][$idx]);
-                $roles[$key]['permissions'] = array_values($roles[$key]['permissions']);
-                $updated = true;
-            }
-        }
-        if ($updated) {
-            $this->session->set('rbac_roles', $roles);
-        }
+        return $this->db->table('permissions')
+                        ->where('name', $name)
+                        ->delete();
     }
 
     // ==========================================
@@ -197,75 +88,130 @@ class RBACStore
 
     public function getRoles()
     {
-        return $this->session->get('rbac_roles') ?? [];
+        $roles = $this->db->table('roles')
+                         ->orderBy('name', 'ASC')
+                         ->get()
+                         ->getResultArray();
+
+        foreach ($roles as &$role) {
+            $role['permissions'] = $this->getRolePermissionNames($role['id']);
+        }
+
+        return $roles;
     }
 
     public function getRole($name)
     {
-        $roles = $this->getRoles();
-        foreach ($roles as $role) {
-            if ($role['name'] === $name) {
-                return $role;
-            }
+        $role = $this->db->table('roles')
+                        ->where('name', $name)
+                        ->get()
+                        ->getRowArray();
+
+        if ($role) {
+            $role['permissions'] = $this->getRolePermissionNames($role['id']);
         }
-        return null;
+
+        return $role;
+    }
+
+    protected function getRolePermissionNames($roleId)
+    {
+        $query = $this->db->table('role_permissions')
+                         ->select('permissions.name')
+                         ->join('permissions', 'role_permissions.permission_id = permissions.id')
+                         ->where('role_permissions.role_id', $roleId)
+                         ->get();
+
+        $result = $query->getResultArray();
+        return array_column($result, 'name');
     }
 
     public function saveRole($data)
     {
-        $roles = $this->getRoles();
-        $exists = false;
+        $name = $data['name'];
+        $description = $data['description'] ?? '';
+        $permissions = $data['permissions'] ?? [];
 
-        foreach ($roles as $key => $role) {
-            if ($role['name'] === $data['name']) {
-                $roles[$key] = array_merge($role, $data);
-                $exists = true;
-                break;
+        $existing = $this->db->table('roles')
+                            ->where('name', $name)
+                            ->get()
+                            ->getRowArray();
+
+        $this->db->transStart();
+
+        if ($existing) {
+            $roleId = $existing['id'];
+            $this->db->table('roles')
+                     ->where('id', $roleId)
+                     ->update([
+                         'description' => $description,
+                         'updated_at'  => date('Y-m-d H:i:s')
+                     ]);
+        } else {
+            $this->db->table('roles')->insert([
+                'name'        => $name,
+                'description' => $description,
+                'is_system'   => $data['is_system'] ?? 0,
+                'created_at'  => date('Y-m-d H:i:s'),
+                'updated_at'  => date('Y-m-d H:i:s')
+            ]);
+            $roleId = $this->db->insertID();
+        }
+
+        // Update permissions mapping
+        $this->db->table('role_permissions')
+                 ->where('role_id', $roleId)
+                 ->delete();
+
+        if (!empty($permissions)) {
+            $permsData = $this->db->table('permissions')
+                                 ->select('id')
+                                 ->whereIn('name', $permissions)
+                                 ->get()
+                                 ->getResultArray();
+
+            $insertData = [];
+            foreach ($permsData as $perm) {
+                $insertData[] = [
+                    'role_id'       => $roleId,
+                    'permission_id' => $perm['id']
+                ];
+            }
+
+            if (!empty($insertData)) {
+                $this->db->table('role_permissions')->insertBatch($insertData);
             }
         }
 
-        if (!$exists) {
-            $data['is_system'] = $data['is_system'] ?? false;
-            $data['permissions'] = $data['permissions'] ?? [];
-            $roles[] = $data;
-        }
-
-        $this->session->set('rbac_roles', $roles);
-        return true;
+        $this->db->transComplete();
+        return $this->db->transStatus();
     }
 
     public function deleteRole($name)
     {
-        $roles = $this->getRoles();
-        foreach ($roles as $key => $role) {
-            if ($role['name'] === $name) {
-                if (!empty($role['is_system'])) {
-                    return false; // Prevent system role deletion
-                }
-                unset($roles[$key]);
-                $this->session->set('rbac_roles', array_values($roles));
+        $role = $this->getRole($name);
+        if (!$role || !empty($role['is_system'])) {
+            return false;
+        }
 
-                // Re-assign users with this role to 'User' default role
-                $this->reassignUsersRole($name, 'User');
-                return true;
-            }
-        }
-        return false;
-    }
+        $this->db->transStart();
 
-    protected function reassignUsersRole($oldRole, $newRole)
-    {
-        $users = $this->getUsers();
-        $updated = false;
-        foreach ($users as $key => $user) {
-            if ($user['role'] === $oldRole) {
-                $users[$key]['role'] = $newRole;
-                $updated = true;
-            }
-        }
-        if ($updated) {
-            $this->session->set('rbac_users', $users);
-        }
+        $userRole = $this->db->table('roles')
+                             ->where('name', 'User')
+                             ->get()
+                             ->getRowArray();
+        $userRoleId = $userRole ? $userRole['id'] : null;
+
+        $this->db->table('users')
+                 ->where('role_id', $role['id'])
+                 ->update(['role_id' => $userRoleId]);
+
+        $this->db->table('roles')
+                 ->where('id', $role['id'])
+                 ->delete();
+
+        $this->db->transComplete();
+        return $this->db->transStatus();
     }
 
     // ==========================================
@@ -274,95 +220,117 @@ class RBACStore
 
     public function getUsers()
     {
-        return $this->session->get('rbac_users') ?? [];
+        $result = $this->db->table('users')
+                           ->select('users.*, roles.name as role')
+                           ->join('roles', 'users.role_id = roles.id', 'left')
+                           ->orderBy('users.id', 'ASC')
+                           ->get()
+                           ->getResultArray();
+
+        foreach ($result as &$user) {
+            if (empty($user['role'])) {
+                $user['role'] = 'User';
+            }
+        }
+
+        return $result;
     }
 
     public function getUser($id)
     {
-        $users = $this->getUsers();
-        foreach ($users as $user) {
-            if ((int)$user['id'] === (int)$id) {
-                return $user;
-            }
+        $user = $this->db->table('users')
+                        ->select('users.*, roles.name as role')
+                        ->join('roles', 'users.role_id = roles.id', 'left')
+                        ->where('users.id', $id)
+                        ->get()
+                        ->getRowArray();
+
+        if ($user && empty($user['role'])) {
+            $user['role'] = 'User';
         }
-        return null;
+
+        return $user;
     }
 
     public function getUserByEmail($email)
     {
-        $users = $this->getUsers();
-        foreach ($users as $user) {
-            if (strtolower($user['email']) === strtolower(trim($email))) {
-                return $user;
-            }
+        $user = $this->db->table('users')
+                        ->select('users.*, roles.name as role')
+                        ->join('roles', 'users.role_id = roles.id', 'left')
+                        ->where('LOWER(users.email)', strtolower(trim($email)))
+                        ->get()
+                        ->getRowArray();
+
+        if ($user && empty($user['role'])) {
+            $user['role'] = 'User';
         }
-        return null;
+
+        return $user;
     }
 
     public function saveUser($data)
     {
-        $users = $this->getUsers();
         $id = $data['id'] ?? null;
 
-        if ($id) {
-            // Update
-            foreach ($users as $key => $user) {
-                if ((int)$user['id'] === (int)$id) {
-                    if (isset($data['password']) && !empty($data['password'])) {
-                        $data['password_hash'] = password_hash($data['password'], PASSWORD_DEFAULT);
-                        unset($data['password']);
-                    }
-                    $users[$key] = array_merge($user, $data);
-                    $this->session->set('rbac_users', $users);
-                    return true;
-                }
+        $roleId = null;
+        if (isset($data['role'])) {
+            $role = $this->db->table('roles')
+                             ->where('name', $data['role'])
+                             ->get()
+                             ->getRowArray();
+            if ($role) {
+                $roleId = $role['id'];
             }
-        } else {
-            // Create
-            $maxId = 0;
-            foreach ($users as $user) {
-                if ($user['id'] > $maxId) {
-                    $maxId = $user['id'];
-                }
-            }
-            $data['id'] = $maxId + 1;
-            $data['password_hash'] = password_hash($data['password'] ?? 'user123', PASSWORD_DEFAULT);
-            unset($data['password']);
-            $data['created_at'] = date('Y-m-d H:i:s');
-            $data['status'] = $data['status'] ?? 'Active';
-            $data['role'] = $data['role'] ?? 'User';
-            $users[] = $data;
-            $this->session->set('rbac_users', $users);
-            return true;
         }
 
-        return false;
+        $dbData = [];
+        if (isset($data['name'])) $dbData['name'] = $data['name'];
+        if (isset($data['email'])) $dbData['email'] = $data['email'];
+        if ($roleId) $dbData['role_id'] = $roleId;
+        if (isset($data['status'])) $dbData['status'] = $data['status'];
+
+        if (isset($data['password']) && !empty($data['password'])) {
+            $dbData['password_hash'] = password_hash($data['password'], PASSWORD_DEFAULT);
+        } elseif (isset($data['password_hash'])) {
+            $dbData['password_hash'] = $data['password_hash'];
+        }
+
+        if ($id) {
+            $dbData['updated_at'] = date('Y-m-d H:i:s');
+            return $this->db->table('users')
+                            ->where('id', $id)
+                            ->update($dbData);
+        } else {
+            if (!isset($dbData['password_hash'])) {
+                $dbData['password_hash'] = password_hash($data['password'] ?? 'user123', PASSWORD_DEFAULT);
+            }
+            $dbData['created_at'] = date('Y-m-d H:i:s');
+            $dbData['updated_at'] = date('Y-m-d H:i:s');
+            $dbData['status'] = $dbData['status'] ?? 'Active';
+            if (!isset($dbData['role_id'])) {
+                $defaultRole = $this->db->table('roles')->where('name', 'User')->get()->getRowArray();
+                $dbData['role_id'] = $defaultRole ? $defaultRole['id'] : null;
+            }
+
+            return $this->db->table('users')->insert($dbData);
+        }
     }
 
     public function deleteUser($id)
     {
-        $users = $this->getUsers();
-        foreach ($users as $key => $user) {
-            if ((int)$user['id'] === (int)$id) {
-                // Prevent deleting own self
-                if ($this->session->get('logged_user_id') == $id) {
-                    return false;
-                }
-                unset($users[$key]);
-                $this->session->set('rbac_users', array_values($users));
-                return true;
-            }
+        if (session()->get('logged_user_id') == $id) {
+            return false;
         }
-        return false;
+
+        return $this->db->table('users')
+                        ->where('id', $id)
+                        ->delete();
     }
 
     // ==========================================
     // ACCESS CONTROL LOGIC
     // ==========================================
 
-    /**
-     * Checks if a user has a specific permission
-     */
     public function hasPermission($userId, $permissionName)
     {
         $user = $this->getUser($userId);
@@ -371,14 +339,13 @@ class RBACStore
         }
 
         $roleName = $user['role'];
+        if ($roleName === 'Super Admin') {
+            return true;
+        }
+
         $role = $this->getRole($roleName);
         if (!$role) {
             return false;
-        }
-
-        // Super Admin has unrestricted access to everything
-        if ($role['name'] === 'Super Admin') {
-            return true;
         }
 
         return in_array($permissionName, $role['permissions']);

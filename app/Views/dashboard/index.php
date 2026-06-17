@@ -8,12 +8,12 @@
         <div class="relative z-10 max-w-2xl">
             <h2 class="text-2xl md:text-3xl font-extrabold text-white">RBAC Administration Console</h2>
             <p class="mt-2 text-sm md:text-base text-slate-300">
-                You are currently running with a session-based mockup data store. Any creations, modifications, and deletions are saved directly to your server-side session, providing instantaneous feedback without any database configurations.
+                You are currently running with a production-ready relational database store. All creations, modifications, and deletions are synchronized directly with your MySQL database.
             </p>
             <div class="mt-4 flex space-x-3 text-xs md:text-sm">
                 <span class="inline-flex items-center px-3 py-1 bg-slate-800 rounded-full text-slate-300 font-medium border border-slate-700">
-                    <span class="h-2 w-2 rounded-full bg-indigo-400 mr-2 animate-pulse"></span>
-                    Mock Storage Active
+                    <span class="h-2 w-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
+                    MySQL Database Active
                 </span>
                 <span class="inline-flex items-center px-3 py-1 bg-slate-800 rounded-full text-slate-300 font-medium border border-slate-700">
                     CI Version: <?= esc(\CodeIgniter\CodeIgniter::CI_VERSION) ?>
