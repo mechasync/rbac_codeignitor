@@ -1,0 +1,45 @@
+# CodeIgniter 4 .gitignore
+
+# Vendor directory
+/vendor/
+
+# Environment files
+.env
+.env.backup
+.env.development
+.env.production
+
+# writable directory contents
+/writable/cache/*
+!/writable/cache/index.html
+
+/writable/debugbar/*
+!/writable/debugbar/index.html
+
+/writable/logs/*
+!/writable/logs/index.html
+
+/writable/session/*
+!/writable/session/index.html
+
+/writable/uploads/*
+!/writable/uploads/index.html
+
+# PHPUnit and local testing files
+.phpunit.result.cache
+
+# Editor/IDE directories
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
